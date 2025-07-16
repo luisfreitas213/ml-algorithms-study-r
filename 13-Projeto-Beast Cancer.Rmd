@@ -1,0 +1,173 @@
+---
+title: "Beast Cancer Project"
+author: "Luís"
+date: "14/05/2020"
+output: html_document
+---
+
+```{r include=FALSE}
+
+options(digits = 3)
+library(matrixStats)
+library(tidyverse)
+library(caret)
+library(dslabs)
+library(caret)
+library(gam)
+library(cluster)    
+data(brca)
+```
+
+## 1.REGULARIZATION
+```{r echo=TRUE}
+dim(brca$x)[1]
+dim(brca$x)[2]
+mean(brca$y == "M")
+which.max(colMeans(brca$x))
+which.min(colSds(brca$x))
+
+x_centered <- sweep(brca$x, 2, colMeans(brca$x))
+x_scaled <- sweep(x_centered, 2, colSds(brca$x), FUN = "/")
+sd(x_scaled[,1])
+
+median(x_scaled[,1])
+
+d_samples <- dist(x_scaled)
+dist_BtoB <- as.matrix(d_samples)[1, brca$y == "B"]
+mean(dist_BtoB[2:length(dist_BtoB)])
+
+d_features <- dist(t(x_scaled))
+heatmap(as.matrix(d_features), labRow = NA, labCol = NA)
+
+h <- hclust(d_features)
+groups <- cutree(h, k = 5)
+split(names(groups), groups)
+```
+
+## 2.PC
+```{r echo=TRUE}
+pca <- prcomp(x_scaled)
+summary(pca)     # first value of Cumulative Proportion that exceeds 0.9: PC7
+
+data.frame(pca$x[,1:2], type = brca$y) %>%
+  ggplot(aes(PC1, PC2, color = type)) +
+  geom_point()
+
+data.frame(type = brca$y, pca$x[,1:10]) %>%
+    gather(key = "PC", value = "value", -type) %>%
+    ggplot(aes(PC, value, fill = type)) +
+    geom_boxplot()
+```
+
+
+## 3. ALGORITMOS
+
+```{r echo=TRUE}
+set.seed(1) # if using R 3.5 or earlier
+set.seed(1, sample.kind = "Rounding")    # if using R 3.6 or later
+test_index <- createDataPartition(brca$y, times = 1, p = 0.2, list = FALSE)
+test_x <- x_scaled[test_index,]
+test_y <- brca$y[test_index]
+train_x <- x_scaled[-test_index,]
+train_y <- brca$y[-test_index]
+
+dim(train_x)
+dim(train_y)
+
+mean(train_y == "B")
+mean(test_y == "B")
+
+#CLUSTER K MEANS
+predict_kmeans <- function(x, k) {
+    centers <- k$centers    # extract cluster centers
+    # calculate distance to cluster centers
+    distances <- sapply(1:nrow(x), function(i){
+                        apply(centers, 1, function(y) dist(rbind(x[i,], y)))
+                 })
+  max.col(-t(distances))  # select cluster with min distance to center
+}
+set.seed(3) # if using R 3.5 or earlier
+set.seed(3, sample.kind = "Rounding")    # if using R 3.6 or later
+k <- kmeans(train_x, centers = 2)
+kmeans_preds <- ifelse(predict_kmeans(test_x, k) == 1, "B", "M")%>% 
+    factor(levels = levels(test_y)) 
+y=mean(kmeans_preds == test_y)
+confusionMatrix(data=kmeans_preds, reference=test_y)
+k$size
+
+#LOGISTIC REGRESSION
+
+ds=data.frame(y=(train_y),train_x)
+dst=data.frame(y=(test_y),test_x)
+train_glm <- train(y ~ ., method = "glm", data = ds)
+glm_preds <- predict(train_glm, dst)%>% 
+    factor(levels = levels(dst$y))
+confusionMatrix(data=glm_preds,reference= dst$y)
+
+#LDA AND QDA 
+ds=data.frame(y=(train_y),train_x)
+dst=data.frame(y=(test_y),test_x)
+train_glm <- train(y ~ ., method = "lda", data = ds)
+lda_preds <- predict(train_glm, dst)%>% 
+    factor(levels = levels(dst$y))
+confusionMatrix(data=lda_preds,reference= dst$y)
+ds=data.frame(y=(train_y),train_x)
+dst=data.frame(y=(test_y),test_x)
+train_glm <- train(y ~ ., method = "qda", data = ds)
+qda_preds <- predict(train_glm, dst)%>% 
+    factor(levels = levels(dst$y))
+confusionMatrix(data=qda_preds,reference= dst$y)
+
+#LOESS 
+
+ds=data.frame(y=(train_y),train_x)
+dst=data.frame(y=(test_y),test_x)
+train_glm <- train(y ~ ., method = "gamLoess", data = ds)
+loess_preds <- predict(train_glm, dst)%>% 
+    factor(levels = levels(dst$y))
+confusionMatrix(data=loess_preds,reference= dst$y)
+
+#KNN
+set.seed(7)
+ds=data.frame(y=(train_y),train_x)
+dst=data.frame(y=(test_y),test_x)
+train_glm <- train(y ~ ., method = "knn", tuneGrid = data.frame(k = seq(3, 21, 2)), data = ds)
+knn_preds <- predict(train_glm, dst)%>% 
+    factor(levels = levels(dst$y))
+confusionMatrix(data=knn_preds,reference= dst$y)
+train_glm$bestTune
+
+#RANDOM FOREST
+set.seed(9)
+ds=data.frame(y=(train_y),train_x)
+dst=data.frame(y=(test_y),test_x)
+fit <- with(ds, 
+              train(y ~ ., method = "rf", 
+                    data = ds,
+                    tuneGrid = data.frame(mtry = c(3,5,7,9)),
+                    importance=TRUE))
+rf_preds=predict(fit, dst)
+  confusionMatrix(data=rf_preds, reference=dst$y)
+  ggplot(fit)
+  imp <- varImp(fit)
+  imp
+  
+#ENSEMBLE
+ensemble <- cbind(glm = glm_preds == "B", lda = lda_preds == "B", qda = qda_preds == "B", loess = loess_preds == "B", rf = rf_preds == "B", knn = knn_preds == "B", kmeans = kmeans_preds == "B")
+
+ensemble_preds <- ifelse(rowMeans(ensemble) > 0.5, "B", "M")
+mean(ensemble_preds == test_y)
+
+models <- c("K means", "Logistic regression", "LDA", "QDA", "Loess", "K nearest neighbors", "Random forest", "Ensemble")
+accuracy <- c(mean(kmeans_preds == test_y),
+              mean(glm_preds == test_y),
+              mean(lda_preds == test_y),
+              mean(qda_preds == test_y),
+              mean(loess_preds == test_y),
+              mean(knn_preds == test_y),
+              mean(rf_preds == test_y),
+              mean(ensemble_preds == test_y))
+data.frame(Model = models, Accuracy = accuracy)
+
+
+```

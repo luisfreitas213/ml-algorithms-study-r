@@ -1,0 +1,62 @@
+---
+title: "Naive Bayes, QDA, LDA"
+author: "Luís"
+date: "03/05/2020"
+output: html_document
+---
+# Modelos Generativos NB, LDA, QDA
+*(Variavel Dependente: factor e variavel independente: Numeric)*
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(tidyverse)
+library(dslabs)
+library(GGally)
+library(caret)
+library(purrr)
+```
+
+## Exportação de Dados 
+```{r echo=TRUE}
+data("heights")
+head(heights$sex)
+head(heights$height)
+y <- heights$height
+set.seed(2)
+test_index <- createDataPartition(y, times = 1, p = 0.5, list = FALSE)
+train_set <- heights %>% slice(-test_index)
+test_set <- heights %>% slice(test_index)
+head(train_set)
+```
+
+##Criação e analise dos modelos
+```{r echo=TRUE}
+# Estimating averages and standard deviations
+params <- train_set %>%
+  group_by(sex) %>%
+  summarize(avg = mean(height), sd = sd(height))
+params
+# Estimating the prevalence
+pi <- train_set %>% summarize(pi=mean(sex=="Female")) %>% pull(pi)
+pi
+# Getting an actual rule
+x <- test_set$height
+f0 <- dnorm(x, params$avg[2], params$sd[2])
+f1 <- dnorm(x, params$avg[1], params$sd[1])
+p_hat_bayes <- f1*pi / (f1*pi + f0*(1 - pi))
+#Computing
+y_hat_bayes <- ifelse(p_hat_bayes > 0.5, "Female", "Male")
+confusionMatrix(data = factor(y_hat_bayes), reference = factor(test_set$sex))
+# Changing the cutoff of the decision rule
+p_hat_bayes_unbiased <- f1 * 0.5 / (f1 * 0.5 + f0 * (1 - 0.5))
+y_hat_bayes_unbiased <- ifelse(p_hat_bayes_unbiased > 0.5, "Female", "Male")
+confusionMatrix(data = factor(y_hat_bayes_unbiased), reference = factor(test_set$sex))
+
+train_qda <- train(sex ~., method = "qda", data = train_set)
+y_hat <- predict(train_qda, test_set)
+confusionMatrix(data = y_hat, reference = test_set$sex)
+
+train_lda <- train(sex ~., method = "lda", data = train_set)
+y_hat <- predict(train_lda, test_set)
+confusionMatrix(data = y_hat, reference = test_set$sex)
+```

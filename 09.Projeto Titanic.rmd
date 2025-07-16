@@ -1,0 +1,171 @@
+---
+title: "TITANIC PROJECT"
+author: "Luís"
+date: "06/05/2020"
+output: html_document
+---
+
+
+## 1.Tratamento de Dados
+```{r echo=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+library(titanic)    # loads titanic_train data frame
+library(caret)
+library(tidyverse)
+library(rpart)
+# 3 significant digits
+options(digits = 3)
+# clean the data - `titanic_train` is loaded with the titanic package
+titanic_clean <- titanic_train %>%
+    mutate(Survived = factor(Survived),
+           Embarked = factor(Embarked),
+           Age = ifelse(is.na(Age), median(Age, na.rm = TRUE), Age), # NA age to median age
+           FamilySize = SibSp + Parch + 1) %>%    # count family members
+    select(Survived,  Sex, Pclass, Age, Fare, SibSp, Parch, FamilySize, Embarked)
+dim(titanic_clean) #Exportação dos dados
+head(titanic_clean) #Exportação dos dados
+
+set.seed(42)
+test_index <- createDataPartition(titanic_clean$Survived, times = 1, p = 0.2, list = FALSE)
+test_set <- titanic_clean[test_index, ]
+train_set <- titanic_clean[-test_index, ]
+dim(train_set) #Tamanho do treino
+dim(test_set) #Tamanho do teste
+mean(train_set$Survived == 1)# % de individuos que sobreviveu
+```
+
+## 2. Previsão da linha de base
+```{r echo=TRUE}
+#The simplest prediction method is randomly guessing the outcome without using additional predictors. These methods will help us determine whether our machine learning algorithm performs better than chance
+set.seed(3)
+# guess the outcome com p padrão
+n <- length(test_index)
+y_hat <- sample(c("0", "1"), n, replace = TRUE) %>% 
+  factor(levels = levels(test_set$Survived))
+mean(y_hat == test_set$Survived)
+confusionMatrix(data = y_hat,reference = test_set$Survived)
+```
+
+## 3. Sobrevivencia dos Passageiros e Genero
+```{r echo=TRUE}
+mean(train_set$Survived[train_set$Sex == 'female' ] == 1 ) # % de mulheres que sobreviveram
+mean(train_set$Survived[train_set$Sex == 'male' ] == 1  ) # % de homens que sobreviveram
+
+sex_model <- ifelse(test_set$Sex == "female", 1, 0)%>% 
+  factor(levels = levels(test_set$Survived))    # predict Survived=1 if female, 0 if male
+mean(sex_model == test_set$Survived)    # calculate accuracy
+confusionMatrix(data = sex_model,reference = test_set$Survived)
+
+train_set %>%
+    group_by(Pclass) %>%
+    summarize(Survived = mean(Survived == 1))
+
+P_model <- ifelse(test_set$Pclass == 1, 1, 0)%>% 
+  factor(levels = levels(test_set$Survived))    # predict Survived=1 if female, 0 if male
+mean(P_model == test_set$Survived)
+
+train_set %>%
+    group_by(Pclass,Sex) %>%
+    summarize(Survived = mean(Survived == 1))
+
+PS_model<- ifelse((test_set$Sex == 'female' & test_set$Pclass == 1) | (test_set$Sex == 'female' & test_set$Pclass == 2),1,0)%>% 
+  factor(levels = levels(test_set$Survived))
+
+mean(PS_model==test_set$Survived)
+
+confusionMatrix(data = P_model,reference = test_set$Survived)
+confusionMatrix(data = PS_model,reference = test_set$Survived)
+
+F_meas(sex_model,test_set$Survived)
+F_meas(P_model,test_set$Survived)
+F_meas(PS_model,test_set$Survived)
+```
+## 4. Previsão lda e qda Utilizando o "FARE"
+```{r echo=TRUE}
+set.seed(1)
+train_qda <- train(Survived ~Fare, method = "lda", data = train_set)
+y_hat <- predict(train_qda, test_set)
+confusionMatrix(data = y_hat, reference = test_set$Survived)
+
+train_lda <- train(Survived ~Fare, method = "qda", data = train_set)
+y_hat <- predict(train_lda, test_set)
+confusionMatrix(data = y_hat, reference = test_set$Survived)
+```
+
+
+## 5. Regressão Logisitca
+
+```{r echo=TRUE}
+set.seed(1)
+train_glm <- train(Survived ~ Age, method = "glm", data = train_set)
+y_hat_glm <- predict(train_glm, test_set, type = "raw")
+confusionMatrix(y_hat_glm, test_set$Survived)
+
+set.seed(1)
+train_glm <- train(Survived ~ Sex + Pclass + Fare + Age, method = "glm", data = train_set)
+y_hat_glm <- predict(train_glm, test_set, type = "raw")
+confusionMatrix(y_hat_glm, test_set$Survived)
+
+set.seed(1)
+train_glm <- train(Survived ~ ., method = "glm", data = train_set)
+y_hat_glm <- predict(train_glm, test_set, type = "raw")
+confusionMatrix(y_hat_glm, test_set$Survived)
+```
+
+## 6. KNN 
+
+```{r echo=TRUE}
+set.seed(8)
+train.control <- trainControl(method = "cv", number = 10, p = .9)
+
+train_knn <- train(Survived ~ ., method = "knn", tuneGrid = data.frame(k = seq(3, 51, 2)),
+                   data = train_set,trControl = train.control)
+y_hat_knn_ks <- predict(train_knn, test_set)
+confusionMatrix(data=y_hat_knn_ks, test_set$Survived)
+head(y_hat_knn_ks) #Resultados com Cross-Validation
+
+train_knn$bestTune
+train_knn$finalModel
+
+train_knn$results %>% 
+  ggplot(aes(x = k, y = Accuracy)) +
+  geom_line() +
+  geom_point() +
+  geom_errorbar(aes(x = k, 
+                    ymin = Accuracy - AccuracySD,
+                    ymax = Accuracy + AccuracySD))
+
+
+ggplot(train_knn, highlight = TRUE)
+```
+
+## 7. Arvore de Decisção
+
+```{r echo=TRUE}
+set.seed(10)
+# Decision Tree With Cross-Validation
+train_rpart <- train(Survived ~ .,
+                     method = "rpart",
+                     tuneGrid = data.frame(cp = seq(0, 0.05, 0.002)),
+                     data = train_set)
+head(train_rpart)
+ggplot(train_rpart)
+confusionMatrix(predict(train_rpart, test_set), test_set$Survived)
+plot(train_rpart$finalModel , margin = 0.1)
+text(train_rpart$finalModel , cex = 0.75)
+```
+
+## 8. Floresta Aleatoria 
+
+```{r echo=TRUE}
+set.seed(14)
+fit <- with(train_set, 
+              train(Survived ~ ., method = "rf", 
+                    data = train_set,
+                    tuneGrid = data.frame(mtry = seq(1, 7, 1)),
+                    ntree=100))
+  confusionMatrix(predict(fit, test_set), test_set$Survived)
+  ggplot(fit)
+  imp <- varImp(fit)
+  imp
+```

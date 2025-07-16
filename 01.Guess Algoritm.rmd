@@ -1,0 +1,67 @@
+---
+title: "Guess Algoritm"
+author: "Luís Freitas"
+date: "29/03/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+#1. Guess Algoritm
+*(Variavéis resposta: Categorica  variavel explicativa: Numerica (1)) - Só importa a variavel explicativa neste algoritmo*
+
+*Algoritmo que escolhe p% de vezes um resultado. O treino deste algoritmo prende-se em otimizar p, isto é, o valor de p que retorna maior accuracy nos testes. *
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+###1. Importar as Extenções
+library(e1071)
+library(tidyverse)
+library(caret)
+library(dslabs)
+library(ggrepel)
+library(GGally)
+```
+
+
+##1.Exportação de Dados
+```{r echo=TRUE}
+# define the outcome and predictors
+data(heights)
+y <- heights$sex
+x <- heights$height
+#Divisão do Treino e do Teste
+set.seed(2)
+test_index <- createDataPartition(y, times = 1, p = 0.5, list = FALSE)
+test_set <- heights[test_index, ]
+train_set <- heights[-test_index, ]
+head(test_set)
+```
+##2.Analise de dados 
+```{r}
+
+ggpairs(heights, columns = 1:2, ggplot2::aes(colour=sex))
+
+```
+
+##3.Guess Algoritm
+```{r echo=TRUE}
+# guess the outcome
+pp <- seq(0, 1, 0.001)
+accuracy <- map_df(pp, function(p){   ##Este algoritmo descobre o melhor p 
+  n <- length(test_index)
+  y_hat <- sample(c("Male", "Female"), n, replace = TRUE, prob=c(p, 1-p)) %>% 
+  factor(levels = levels(train_set$sex))
+  accu=mean(y_hat == train_set$sex)
+  tibble(accura=accu)
+})
+p=pp[which.max(accuracy$accura)]
+p
+n <- length(test_index)
+y_hat <- sample(c("Male", "Female"), n, replace = TRUE, prob=c(p, 1-p)) %>% 
+  factor(levels = levels(test_set$sex))
+mean(y_hat == test_set$sex)
+confusionMatrix(data = y_hat,reference = test_set$sex)
+```

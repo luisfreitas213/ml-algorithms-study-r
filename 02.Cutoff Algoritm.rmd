@@ -1,0 +1,281 @@
+---
+title: "Cutoff Algoritm"
+author: "Luís Freitas"
+date: "29/03/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+#1. Cutoff Algoritm 
+
+*(Variavéis resposta: Categorica  variavel explicativa: Numerica (1) )*
+
+*Algoritmo que vai descobrir o melhor ponto de corte para definir uma resposta*
+
+
+```{r echo=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+###1. Importar as Extenções
+library(e1071)
+library(tidyverse)
+library(caret)
+library(dslabs)
+library(ggrepel)
+library(GGally)
+```
+
+##1.Exportação de Dados
+```{r echo=TRUE}
+# define the outcome and predictors
+data(heights)
+y <- heights$sex
+x <- heights$height
+head(y)
+head(x)
+#Divisão do Treino e do Teste
+set.seed(2007)
+test_index <- createDataPartition(y, times = 1, p = 0.5, list = FALSE)
+test_set <- heights[test_index, ]
+train_set <- heights[-test_index, ]
+```
+
+##2.Analise de dados 
+```{r}
+
+ggpairs(heights, columns = 1:2, ggplot2::aes(colour=sex))
+
+```
+
+
+##2.1 Treino (Decisão do Valor pela Accuracy) - Média
+```{r echo=TRUE}
+heights %>% group_by(sex) %>% summarize(mean(height), sd(height)) ### Criar matriz para ver média de alturas e desvio padrão
+###Escolha do Melhor Cutoff
+#MEAN
+cutoff <- seq(min(heights$height), max(heights$height)) 
+accuracy <- map_dbl(cutoff, function(x){ 
+            y_hat <- ifelse(train_set$height > x, "Male", "Female") %>% 
+            factor(levels = levels(test_set$sex))
+            mean(y_hat == train_set$sex) 
+}) 
+max(accuracy)
+best_cutoff <- cutoff[which.max(accuracy)] 
+best_cutoff
+
+#  Algoritmo com o melhor Cutoff
+y_hat <- ifelse(test_set$height > best_cutoff, "Male", "Female") %>% 
+  factor(levels = levels(test_set$sex))
+# Accuracy do Melhor Algoritmo
+mean(y_hat == test_set$sex)
+confusionMatrix(data = y_hat,reference = test_set$sex)
+
+#F-MEAS
+cutoff <- seq(min(heights$height), max(heights$height))
+F_1 <- map_dbl(cutoff, function(x){
+  y_hat <- ifelse(train_set$height > x, "Male", "Female") %>% 
+    factor(levels = levels(test_set$sex))
+  F_meas(data = y_hat, reference = factor(train_set$sex))
+})
+max(F_1)
+best_cutoff <- cutoff[which.max(F_1)] 
+' Ponto de Corte do Melhor Resultado:'
+best_cutoff
+
+# Criar o Algoritmo com o melhor Ponto de Corte
+y_hat <- ifelse(test_set$height > best_cutoff, "Male", "Female") %>% 
+  factor(levels = levels(test_set$sex))
+## Accuracy do Melhor Algoritmo
+mean(y_hat == test_set$sex)
+confusionMatrix(data = y_hat,reference = test_set$sex)
+```
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+##2. Cutoff (Variavéis resposta: Categorica  variavel explicativa: Categorica (1) )
+
+```{r echo=TRUE}
+library(dslabs)
+library(dplyr)
+library(lubridate)
+data(reported_heights)
+#install.packages("e1071")
+library(e1071)
+#install.packages("tidyverse")
+library(tidyverse)
+#install.packages("caret")
+library(caret)
+#install.packages("dslabs")
+library(dslabs)
+#install.packages("ggrepel")
+library(ggrepel)
+```
+
+##1.Exportação de Dados
+
+```{r echo=TRUE}
+dat <- mutate(reported_heights, date_time = ymd_hms(time_stamp)) %>%
+  filter(date_time >= make_date(2016, 01, 25) & date_time < make_date(2016, 02, 1)) %>%
+  mutate(type = ifelse(day(date_time) == 25 & hour(date_time) == 8 & between(minute(date_time), 15, 30), "inclass","online")) %>%
+  select(sex, type)
+
+y <- factor(dat$sex, c("Female", "Male"))
+x <- dat$type
+```
+
+##2. Analise exploratoria
+
+```{r echo=TRUE}
+dat %>% group_by(type) %>% summarize(prop_female = mean(sex == "Female"))
+```
+
+##3. Testar o Algoritmo sem Treino
+
+```{r echo=TRUE}
+#  Algoritmo com o melhor Cutoff
+y_hat <- ifelse(dat$type == 'online', "Male", "Female")# %>% 
+ # factor(levels = levels(dat$sex))
+y_hat <- factor(y_hat)
+
+# Accuracy do Melhor Algoritmo
+mean(y_hat == dat$sex)
+```
+
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+##3. Cutoff (Variavéis resposta: Categorica  variavel explicativa: Numerica (4) )
+
+##1. Exportação de Dados
+```{r echo=TRUE}
+data(iris)
+iris <- iris[-which(iris$Species=='setosa'),]
+y <- iris$Species
+
+set.seed(2)    # if using R 3.6 or later, use set.seed(2, sample.kind="Rounding")
+test_index <- createDataPartition(y,times=1,p=0.5,list=FALSE)
+test <- iris[test_index,]
+train <- iris[-test_index,]
+```
+
+##2. Analise da variavel com melhor resultado (Treino)
+```{r echo=TRUE}
+"Sepal.Length"
+cutoff <- seq(min(iris$Sepal.Length), max(iris$Sepal.Length),0.1) 
+accuracy <- map_dbl(cutoff, function(x){ 
+  y_hat <- ifelse(train$Sepal.Length > x, "virginica", "versicolor") %>% 
+    factor(levels = levels(test$Species))
+  mean(y_hat == train$Species) 
+}) 
+max(accuracy)
+best_cutoff <- cutoff[which.max(accuracy)] 
+best_cutoff
+
+"Sepal.Width"
+cutoff <- seq(min(iris$Sepal.Width), max(iris$Sepal.Width),0.1) 
+accuracy <- map_dbl(cutoff, function(x){ 
+  y_hat <- ifelse(train$Sepal.Width > x, "virginica", "versicolor") %>% 
+    factor(levels = levels(test$Species))
+  mean(y_hat == train$Species) 
+}) 
+max(accuracy)
+best_cutoff <- cutoff[which.max(accuracy)] 
+best_cutoff
+
+"Petal.Length"
+cutoff <- seq(min(iris$Petal.Length), max(iris$Petal.Length),0.1) 
+accuracy <- map_dbl(cutoff, function(x){ 
+  y_hat <- ifelse(train$Petal.Length > x, "virginica", "versicolor") %>% 
+    factor(levels = levels(test$Species))
+  mean(y_hat == train$Species) 
+}) 
+max(accuracy)
+best_cutoff <- cutoff[which.max(accuracy)] 
+best_cutoff
+
+"Petal.Width"
+cutoff <- seq(min(iris$Petal.Width), max(iris$Petal.Width),0.1) 
+accuracy <- map_dbl(cutoff, function(x){ 
+  y_hat <- ifelse(train$Petal.Width > x, "virginica", "versicolor") %>% 
+    factor(levels = levels(test$Species))
+  mean(y_hat == train$Species) 
+}) 
+max(accuracy)
+best_cutoff <- cutoff[which.max(accuracy)] 
+best_cutoff
+
+```
+
+##3. Teste (Nota: Escolhemos o Petal.Length porque se retirarmos o espaçamento de 0.1 é o que apresenta melhor resultado )
+
+```{r echo=TRUE}
+"Petal.Length"
+cutoff <- seq(min(iris$Petal.Length), max(iris$Petal.Length),0.1) 
+accuracy <- map_dbl(cutoff, function(x){ 
+  y_hat <- ifelse(train$Petal.Length > x, "virginica", "versicolor") %>% 
+    factor(levels = levels(test$Species))
+  mean(y_hat == train$Species) 
+}) 
+
+max(accuracy)
+best_cutoff <- cutoff[which.max(accuracy)] 
+best_cutoff
+
+#  Algoritmo com o melhor Cutoff
+y_hat <- ifelse(test$Petal.Length > best_cutoff, "virginica", "versicolor") %>% 
+  factor(levels = levels(test$Species))
+#y_hat <- factor(y_hat)
+
+# Accuracy do Melhor Algoritmo
+mean(y_hat == test$Species)
+
+confusionMatrix(data = y_hat,reference = test$Species)
+
+```
+
+##4. Melhoria do Algoritmo com correlação entre variaveis
+
+```{r echo=TRUE}
+plot(iris,pch=21,bg=iris$Species)
+k=data.frame(iris$Sepal.Length,iris$Sepal.Width,iris$Petal.Length,iris$Petal.Width)
+cor(k)
+
+
+"Petal.Length"
+cutoff <- seq(min(iris$Petal.Length), max(iris$Petal.Length),0.1) 
+accuracy <- map_dbl(cutoff, function(x){ 
+  y_hat <- ifelse(train$Petal.Length > x, "virginica", "versicolor") %>% 
+    factor(levels = levels(test$Species))
+  mean(y_hat == train$Species) 
+}) 
+
+max(accuracy)
+best_cutoff <- cutoff[which.max(accuracy)] 
+best_cutoff
+
+"Petal.Width"
+cutoff <- seq(min(iris$Petal.Width), max(iris$Petal.Width),0.1) 
+accuracy <- map_dbl(cutoff, function(x){ 
+  y_hat <- ifelse(train$Petal.Width > x, "virginica", "versicolor") %>% 
+    factor(levels = levels(test$Species))
+  mean(y_hat == train$Species) 
+}) 
+
+max(accuracy)
+best_cutoff2 <- cutoff[which.max(accuracy)] 
+best_cutoff2
+
+
+
+#  Algoritmo com o melhor Cutoff
+y_hat <- ifelse(test$Petal.Length > best_cutoff | test$Petal.Width > best_cutoff2, "virginica", "versicolor") %>% 
+  factor(levels = levels(test$Species))
+#y_hat <- factor(y_hat)
+
+# Accuracy do Melhor Algoritmo
+"Accuracy"
+mean(y_hat == test$Species)
+
+confusionMatrix(data = y_hat,reference = test$Species)
+
+```
+

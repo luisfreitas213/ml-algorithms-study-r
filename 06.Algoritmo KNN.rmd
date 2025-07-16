@@ -1,0 +1,139 @@
+---
+title: "Algoritmo KNN"
+author: "Luís"
+date: "25/04/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+# Algoritmo KNN
+*(Variavel dependente(factor) e 2 variaveis explicativas numéricas)*
+*O objetivo é conseguir prever se y é 2 ou 7 consoante os valores de x_1 e x_2*
+```{r include=FALSE}
+library(tidyverse)
+library(dslabs)
+library(GGally)
+library(caret)
+library(purrr)
+library(class)
+```
+## Exportação de Dados 
+```{r echo=TRUE}
+if(!exists("mnist")) mnist <- read_mnist()
+head(mnist_27$train$x_1)
+data.class(mnist_27$train$x_1)
+head(mnist_27$train$x_2)#variaveis independentes
+data.class(mnist_27$train$x_2)
+head(mnist_27$train$y) #variaveis dependentes
+data.class(mnist_27$train$y)
+dim(mnist_27$train)
+```
+## Analise e compreensão dos dados
+```{r echo=TRUE}
+p = data.frame(mnist_27$train$x_1,mnist_27$train$x_2)
+panel.hist <- function(x, ...)
+{
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(usr[1:2], 0, 1.5) )
+  h <- hist(x, plot = FALSE)
+  breaks <- h$breaks; nB <- length(breaks)
+  y <- h$counts; y <- y/max(y)
+  rect(breaks[-nB], 0, breaks[-1], y, col = "cyan", ...)
+}
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
+{
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  r <- abs(cor(x, y))
+  txt <- format(c(r, 0.123456789), digits = digits)[1]
+  txt <- paste0(prefix, txt)
+  if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+  text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+pairs(p, diag.panel = panel.hist, upper.panel = panel.cor,
+      lower.panel = panel.smooth)
+ggpairs(mnist_27$train, columns = 1:3, ggplot2::aes(colour=y))
+mnist_27$train %>% mutate(y = factor(y)) %>% ggplot(aes(x_1, x_2, fill = y, color=y)) + geom_point(show.legend = FALSE) + stat_ellipse(type="norm")
+```
+
+## KNN (Criacao do Modelo e Avaliacao de resultados)
+```{r echo=TRUE}
+set.seed(2) 
+#pick the k in knn
+ks <- seq(1, 50, 1)
+accuracy <- map_df(ks, function(k){
+  fit <- knn3(y ~ ., data = mnist_27$train, k = k)
+  y_hat <- predict(fit, mnist_27$train, type = "class")
+  cm_train <- confusionMatrix(data = y_hat, reference = mnist_27$train$y)
+  train_error <- cm_train$overall["Accuracy"]
+  y_hat <- predict(fit, mnist_27$test, type = "class")
+  cm_test <- confusionMatrix(data = y_hat, reference = mnist_27$test$y)
+  test_error <- cm_test$overall["Accuracy"]
+  y_hat <- predict(fit, mnist_27$test, type = "class")
+  F_1<-F_meas(data = y_hat, reference = factor(mnist_27$test$y))
+  tibble(train = train_error, test = test_error,F1=F_1)
+}) ## Algoritmo KNN com Accuracy e F-meas
+
+predicted.type <- NULL
+error.rate <- NULL
+for (i in 1:50) {
+  predicted.type <- knn(mnist_27$train[2:3],mnist_27$test[2:3],mnist_27$train$y,k=i)
+  error.rate[i] <- mean(predicted.type!=mnist_27$test$y)
+}
+knn.error <- as.data.frame(cbind(k=1:50,error.type =error.rate))
+ ggplot(knn.error,aes(k,error.type))+ 
+      geom_point()+ 
+      geom_line() + 
+      scale_x_continuous(breaks=1:50)+ 
+      theme_bw() +
+      xlab("Value of K") +
+      ylab('Error')
+ plot(ks, accuracy$F1)
+ 
+print("F_meas")
+kss=ks[which.max(accuracy$F1)]
+kss
+max(accuracy$F1)
+knn_fit_ks <- knn3(y ~ ., data = mnist_27$train, k = kss)
+y_hat_knn_ks <- predict(knn_fit_ks, mnist_27$train, type = "class")
+confusionMatrix(data=y_hat_knn_ks, reference=mnist_27$train$y)$overall["Accuracy"]
+y_hat_knn_ks <- predict(knn_fit_ks, mnist_27$test, type = "class")
+confusionMatrix(data=y_hat_knn_ks, reference=mnist_27$test$y)
+head(y_hat_knn_ks) #Resultados do F-MEAS
+
+print("Accuracy")
+#pick the k that maximizes accuracy using the estimates built on the test data
+kss=ks[which.max(accuracy$test)]
+kss
+max(accuracy$test)
+#Fit Model
+knn_fit_ks <- knn3(y ~ ., data = mnist_27$train, k = kss)
+y_hat_knn_ks <- predict(knn_fit_ks, mnist_27$train, type = "class")
+confusionMatrix(data=y_hat_knn_ks, reference=mnist_27$train$y)$overall["Accuracy"]
+y_hat_knn_ks <- predict(knn_fit_ks, mnist_27$test, type = "class")
+confusionMatrix(data=y_hat_knn_ks, reference=mnist_27$test$y)
+head(y_hat_knn_ks) #Resultados Accuracy
+
+
+train.control <- trainControl(method = "cv", number = 10, p = .9)
+train_knn <- train(y ~ ., method = "knn", tuneGrid = data.frame(k = seq(1, 50, 1)),
+                   data = mnist_27$train,trControl = train.control)
+y_hat_knn_ks <- predict(train_knn, mnist_27$test)
+confusionMatrix(data=y_hat_knn_ks, reference=mnist_27$test$y)
+head(y_hat_knn_ks) #Resultados com Cross-Validation
+
+train_knn$bestTune
+train_knn$finalModel
+
+train_knn$results %>% 
+  ggplot(aes(x = k, y = Accuracy)) +
+  geom_line() +
+  geom_point() +
+  geom_errorbar(aes(x = k, 
+                    ymin = Accuracy - AccuracySD,
+                    ymax = Accuracy + AccuracySD))
+
+
+ggplot(train_knn, highlight = TRUE)
+
+``` 

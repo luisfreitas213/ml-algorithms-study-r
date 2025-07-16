@@ -1,0 +1,104 @@
+---
+title: "Redução Dimensional"
+author: "Luís"
+date: "10/05/2020"
+output: html_document
+---
+
+# Redução Dimensional
+```{r include=FALSE}
+library(dslabs)
+library(matrixStats)
+library(tidyverse)
+library(dslabs)
+library(GGally)
+library(caret)
+library(purrr)
+library(class)
+library(Rborist)
+library(rafalib)
+library(tidyverse)
+```
+
+##Caso 1
+
+```{r}
+names(iris)
+
+x <- iris[,1:4] %>% as.matrix()
+d <- dist(x)
+image(as.matrix(d), col = rev(RColorBrewer::brewer.pal(9, "RdBu")))
+
+cor(x)
+
+pca <- prcomp(x)
+summary(pca)
+
+data.frame(pca$x[,1:2], Species=iris$Species) %>% 
+  ggplot(aes(PC1,PC2, fill = Species))+
+  geom_point(cex=3, pch=21) +
+  coord_fixed(ratio = 1)
+
+d_approx <- dist(pca$x[, 1:2])
+qplot(d, d_approx) + geom_abline(color="red")
+
+library(dslabs)
+if(!exists("mnist")) mnist <- read_mnist()
+
+col_means <- colMeans(mnist$test$images)
+pca <- prcomp(mnist$train$images)
+pc <- 1:ncol(mnist$test$images)
+qplot(pc, pca$sdev)
+
+summary(pca)$importance[,1:5] 
+
+data.frame(PC1 = pca$x[,1], PC2 = pca$x[,2],
+           label=factor(mnist$train$label)) %>%
+  sample_n(2000) %>% 
+  ggplot(aes(PC1, PC2, fill=label))+
+  geom_point(cex=3, pch=21)
+
+k <- 36
+x_train <- pca$x[,1:k]
+y <- factor(mnist$train$labels)
+fit <- knn3(x_train, y)
+
+x_test <- sweep(mnist$test$images, 2, col_means) %*% pca$rotation
+x_test <- x_test[,1:k]
+
+y_hat <- predict(fit, x_test, type = "class")
+confusionMatrix(y_hat, factor(mnist$test$labels))$overall["Accuracy"]
+```
+
+##Caso 2 
+
+```{r}
+data("tissue_gene_expression")
+dim(tissue_gene_expression$x)
+
+pc <- prcomp(tissue_gene_expression$x)
+data.frame(pc_1 = pc$x[,1], pc_2 = pc$x[,2], 
+			tissue = tissue_gene_expression$y) %>%
+	ggplot(aes(pc_1, pc_2, color = tissue)) +
+	geom_point()                                       #Cluster dos 2 primeiros componentes principais
+
+avgs <- rowMeans(tissue_gene_expression$x)
+data.frame(pc_1 = pc$x[,1], avg = avgs, 
+			tissue = tissue_gene_expression$y) %>%
+ggplot(aes(avgs, pc_1, color = tissue)) +
+	geom_point()
+cor(avgs, pc$x[,1])                                 # correlação da Média de todos os preditores e da primeira componente principal
+
+x <- with(tissue_gene_expression, sweep(x, 1, rowMeans(x))) 
+pc <- prcomp(x)
+data.frame(pc_1 = pc$x[,1], pc_2 = pc$x[,2], 
+	   tissue = tissue_gene_expression$y) %>%
+	   ggplot(aes(pc_1, pc_2, color = tissue)) +
+	   geom_point()                                    #Novo PC com centro removido
+
+for(i in 1:10){
+	boxplot(pc$x[,i] ~ tissue_gene_expression$y, main = paste("PC", i))    #BoxPlot dos 2 primeiros Pc
+}
+
+plot(summary(pc)$importance[3,])             #Variacao dos pcs
+```

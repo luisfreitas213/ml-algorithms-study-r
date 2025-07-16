@@ -1,0 +1,284 @@
+---
+title: "03.Regression Algoritm"
+author: "Luís"
+date: "08/04/2020"
+output: html_document
+---
+Sites para Consultar sobre Regressao Linear:
+Mapas de Correlação:
+https://rpubs.com/melinatarituba/353262
+
+#Modelos de Regressão
+```{r include=FALSE}
+#install.packages("HistData")
+library(HistData)
+#install.packages("caret")
+library(caret)
+#install.packages("dslabs")
+library(dslabs)
+#install.packages("dplyr")
+library(dplyr)
+#install.packages("lubridate")
+library(lubridate)
+data(reported_heights)
+#install.packages("e1071")
+library(e1071)
+#install.packages("tidyverse")
+library(tidyverse)
+#install.packages("caret")
+library(caret)
+#install.packages("dslabs")
+library(dslabs)
+#install.packages("ggrepel")
+library(ggrepel)
+#install.packages("GGally")
+library(GGally)
+#install.packages("gam")
+library(gam)
+```
+
+
+# 1.Regressao Linear Simples
+*(Variavel dependente: numerica, variavel independente : numerica)*
+
+##Exportação de Dados
+
+```{r echo=TRUE}
+set.seed(1)
+galton_heights <- GaltonFamilies %>%
+  filter(gender == "male") %>%
+  select(father, childHeight) %>%
+  rename(son = childHeight)
+head(galton_heights)
+y <- galton_heights$son
+test_index <- createDataPartition(y, times = 1, p = 0.5, list = FALSE)
+train_set <- galton_heights %>% slice(-test_index)
+test_set <- galton_heights %>% slice(test_index)
+```
+
+## Exploração dos dados
+```{r echo=TRUE}
+cor(galton_heights)
+hist(galton_heights$father)
+hist(galton_heights$son)
+boxplot(galton_heights$father, 
+        col = c('gray', 'red'), main = 'Father')
+boxplot(galton_heights$son, 
+        col = c('gray', 'red'), main = 'Son')
+```
+## Criação e estudo do Modelo de Regressão Linear
+```{R echo=TRUE}
+set.seed(1)
+RMSE = function(m, o){
+  sqrt(mean((m - o)^2))
+}
+fit = lm(son ~ father, data = train_set)
+fit$coef
+y_hat<- predict(fit, test_set)
+summary(fit) #P-VALUE < 0.05 and R-SQUARED >=0.7
+par(mfrow=c(2,2))
+plot(fit)
+shapiro.test(fit$residuals) #P-VALUE > 0.05
+RMSE(y_hat, test_set$son)
+```
+
+#2.Regressao Linear Multipla
+*(Variavel dependente: numerica, 2 variavel independente : numerica)*
+
+
+```{R echo=TRUE}
+set.seed(1)
+Sigma <- matrix(c(1.0, 0.75, 0.75, 0.75, 1.0, 0.25, 0.75, 0.25, 1.0), 3, 3)
+dat <- MASS::mvrnorm(n = 100, c(0, 0, 0), Sigma) %>%
+  data.frame() %>% setNames(c("y", "x_1", "x_2"))
+head(dat)
+y <- dat$y
+test_index <- createDataPartition(y, times = 1, p = 0.5, list = FALSE)
+train_set <- dat %>% slice(-test_index)
+test_set <- dat %>% slice(test_index)
+``` 
+
+##Exploração dos dados
+
+```{R echo=TRUE}
+panel.hist <- function(x, ...)
+{
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(usr[1:2], 0, 1.5) )
+  h <- hist(x, plot = FALSE)
+  breaks <- h$breaks; nB <- length(breaks)
+  y <- h$counts; y <- y/max(y)
+  rect(breaks[-nB], 0, breaks[-1], y, col = "cyan", ...)
+}
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
+{
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  r <- abs(cor(x, y))
+  txt <- format(c(r, 0.123456789), digits = digits)[1]
+  txt <- paste0(prefix, txt)
+  if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+  text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+pairs(dat, diag.panel = panel.hist, upper.panel = panel.cor,
+      lower.panel = panel.smooth)
+```
+
+
+##Criação e estudo do Modelo de Regressao Linear
+
+```{r echo=TRUE}
+set.seed(1)
+'Metodo backward'
+fit1=step(lm(y~x_1+x_2,data=train_set),direction="backward")
+
+'Metodo Forward'
+fit2=step(lm(y ~ 1,data=train_set),direction="forward",scope= ~ x_1+x_2)
+
+'Metodo Both'
+fit3=step(lm(y~x_1+x_2,data=train_set),direction="both")
+
+set.seed(1)
+RMSE = function(m, o){
+  sqrt(mean((m - o)^2))
+}
+
+fit$coef
+y_hat<- predict(fit1, test_set)
+summary(fit1) #P-VALUE < 0.05 and R-SQUARED >=0.7
+par(mfrow=c(2,2))
+plot(fit1)
+shapiro.test(fit1$residuals) #P-VALUE > 0.05
+
+
+fit1$coef
+y_hat<- predict(fit1, test_set)
+summary(fit1) #P-VALUE < 0.05 and R-SQUARED >=0.7
+vif<-function (obj, digits = 5) {
+     Qr <- obj$qr
+     if (is.null(obj$terms) || is.null(Qr))
+         stop("invalid 'lm' object:  no terms or qr component")
+     tt <- terms(obj)
+     hasintercept <- attr(tt, "intercept") > 0
+     p <- Qr$rank
+     if (hasintercept)
+         p1 <- 2:p
+     else p1 <- 1:p
+     R <- Qr$qr[p1, p1, drop = FALSE]
+     if (length(p1) > 1)
+         R[row(R) > col(R)] <- 0
+     Rinv <- qr.solve(R)
+     vv <- apply(Rinv, 1, function(x) sum(x^2))
+     ss <- apply(R, 2, function(x) sum(x^2))
+     vif <- ss * vv
+     signif(vif, digits)
+}
+vif(fit1) #<=5
+
+RMSE(y_hat, test_set$y)
+
+
+train_lm <- train(y ~ ., method = "lm", data = train_set)
+summary(train_lm)
+y_hat<- predict(train_lm, test_set)
+RMSE(y_hat, test_set$y)
+```
+
+# 3.Regressao Adaptada  
+*(Variavel dependente: Categorica, 2 variavel independente : numerica)*
+
+```{r echo=TRUE}
+library(dslabs)
+data("heights")
+y <- heights$height
+head(heights)
+set.seed(1)
+test_index <- createDataPartition(y, times = 1, p = 0.5, list = FALSE)
+train_set <- heights %>% slice(-test_index)
+test_set <- heights %>% slice(test_index)
+```
+
+##Exploração dos dados
+
+```{r echo=TRUE}
+ggpairs(heights, columns = 1:2, ggplot2::aes(colour=sex))
+heights %>% 
+  mutate(x = round(height)) %>%
+  group_by(x) %>%
+  filter(n() >= 10) %>%
+  summarize(prop = mean(sex == "Female")) %>%
+  ggplot(aes(x, prop)) +
+  geom_point()
+```
+
+##Criação e estudo do Modelo de Regressao
+```{r echo=TRUE}
+set.seed(1)
+'Metodo backward'
+fit=fit1=step(mutate(train_set, y = as.numeric(sex == "Female")) %>% lm(y ~ height, data = .),direction="backward")
+'Metodo Both'
+fit3=step(mutate(train_set, y = as.numeric(sex == "Female")) %>% lm(y ~ height, data = .),direction="both")
+
+set.seed(1)
+RMSE = function(m, o){
+  sqrt(mean((m - o)^2))
+}
+fit$coef
+y_hat<- predict(fit, test_set)
+summary(fit) #P-VALUE < 0.05 and R-SQUARED >=0.7
+
+p_hat <- predict(fit, test_set)
+y_hat <- ifelse(p_hat > 0.5, "Female", "Male") %>% factor()
+confusionMatrix(y_hat, test_set$sex)
+```
+
+
+
+#4.Regressao Logistica  
+*(Variavel dependente: Categorica,  variavel independente : numerica)*
+
+## Exportação de Dados
+```{r echo=TRUE}
+library(dslabs)
+data("heights")
+y <- heights$height
+head(heights)
+set.seed(2)
+test_index <- createDataPartition(y, times = 1, p = 0.5, list = FALSE)
+train_set <- heights %>% slice(-test_index)
+test_set <- heights %>% slice(test_index)
+
+```
+
+## Criação do Modelo de Regressao Logistica
+```{r echo=TRUE}
+# fit logistic regression model
+glm_fit <- train_set %>% 
+  mutate(y = as.numeric(sex == "Female")) %>%
+  glm(y ~ height, data=., family = "binomial")
+summary(glm_fit)
+p_hat_logit <- predict(glm_fit, newdata = test_set, type = "response")
+y_hat_logit <- ifelse(p_hat_logit > 0.5, "Female", "Male") %>% factor
+confusionMatrix(y_hat_logit, test_set$sex)
+
+
+train_glm <- train(sex ~ ., method = "glm", data = train_set)
+y_hat_glm <- predict(train_glm, test_set, type = "raw")
+confusionMatrix(y_hat_glm, test_set$sex)
+
+```
+
+#5. Regressão Local (Loess)
+
+*(Variavel dependente: Categorica,  variavel independente : numerica)*
+```{r echo=TRUE}
+grid <- expand.grid(span = seq(0.15, 0.65, len = 10), degree = 1)
+train_loess <- train(sex ~ ., 
+                     method = "gamLoess",
+                     tuneGrid=grid,
+                     data = train_set)
+ggplot(train_loess, highlight = TRUE)
+confusionMatrix(data = predict(train_loess, test_set), 
+                reference = test_set$sex)
+
+```

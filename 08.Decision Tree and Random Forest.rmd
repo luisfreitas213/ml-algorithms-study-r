@@ -1,0 +1,79 @@
+---
+title: "Decision Tree and Random Forest"
+author: "Luís"
+date: "03/05/2020"
+output: html_document
+---
+# Decision Tree and Random Forest
+```{r echo=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dslabs)
+library(tidyverse)
+library(dslabs)
+library(GGally)
+library(caret)
+library(purrr)
+library(class)
+library(randomForest)
+library(Rborist)
+library(rpart)
+```
+
+## Exportação de Dados 
+```{r echo=TRUE}
+if(!exists("mnist")) mnist <- read_mnist()
+head(mnist_27$train$x_1)
+data.class(mnist_27$train$x_1)
+head(mnist_27$train$x_2)#variaveis independentes
+data.class(mnist_27$train$x_2)
+head(mnist_27$train$y) #variaveis dependentes
+data.class(mnist_27$train$y)
+dim(mnist_27$train)
+```
+
+##Criação e analise dos modelos
+```{r echo=TRUE}
+#Simple Decision Tree
+fit <- rpart(y ~ ., data = mnist_27$train) 
+plot(fit, margin = 0.1)
+text(fit, cex = 0.75)
+# Decision Tree With Cross-Validation
+train_rpart <- train(y ~ .,
+                     method = "rpart",
+                     tuneGrid = data.frame(cp = seq(0.0, 0.1, len = 25)),
+                     data = mnist_27$train)
+
+ggplot(train_rpart)
+confusionMatrix(predict(train_rpart, mnist_27$test), mnist_27$test$y)
+plot(train_rpart$finalModel , margin = 0.1)
+text(train_rpart$finalModel , cex = 0.75)
+
+
+
+#Random Forest
+train_rf <- randomForest(y ~ ., data=mnist_27$train)
+confusionMatrix(predict(train_rf, mnist_27$test), mnist_27$test$y)
+plot(train_rf)
+#Random Forest with Cross_Validation
+train_rf_2 <- train(y ~ .,
+                    method = "Rborist",
+                    tuneGrid = data.frame(predFixed = 2, minNode = c(3, 50)),
+                    data = mnist_27$train)
+confusionMatrix(predict(train_rf_2, mnist_27$test), mnist_27$test$y)
+plot(train_rf_2)
+imp <- varImp(train_rf_2)
+imp
+
+
+fit <- with(mnist_27$train, 
+              train(y ~ ., method = "rf", 
+                    nodesize = 1,
+                    data = mnist_27$train,
+                    tuneGrid = data.frame(mtry = seq(50, 200, 25)),
+                    ntree=100))
+  confusionMatrix(predict(fit, mnist_27$test), mnist_27$test$y)
+  ggplot(fit)
+  imp <- varImp(fit)
+  imp
+```

@@ -1,0 +1,95 @@
+---
+title: "Matrizes - reconhecimento de digitos"
+author: "Luís"
+date: "19/04/2020"
+output: html_document
+---
+Matrizes para reconhecimento de números
+
+
+EXPORTAR DADOS
+```{r echo=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+# A variavel y representa o valor do digito nas 1000 posições. 
+# A variavel x forma a figura de cada digito, ou seja, x[x1,] é o vetor com n pixels que representa a figura da posição x1. 
+# x[,x1] são os valores do pixel x1 que varia de imagem para imagem (1000 imagens)
+
+
+
+library(tidyverse)
+library(dslabs)
+#install.packages("matrixStats")
+library(matrixStats)
+
+
+if(!exists("mnist")) mnist <- read_mnist()
+
+class(mnist$train$images)  #Ver a class
+
+x <- mnist$train$images[1:1000,] 
+y <- mnist$train$labels[1:1000]
+
+x[1,]
+head(y) #valor real das imagens
+```
+
+
+
+
+DESCODIFICAR IMAGEM 3
+```{r echo=TRUE}
+dim(x) #numero de linhas e colunas de uma matriz
+k = length(matrix(x[3,])) #numero de linhas de uma matriz
+k=sqrt(k) #Descobrir qual é o numero de linhas e colunas que devemos utilizar para transformar a linha
+grid <- matrix(x[3,], k, k)
+grid
+image(1:k, 1:k, grid) #Mostrar a imagem da matriz
+# flip the image back
+image(1:k, 1:k, grid[, k:1])  #Converter a matriz
+
+
+sums <- rowSums(x) #Somar as linhas (cada linha representa uma imagem)
+avg <- rowMeans(x) #Média das Linhas
+
+data_frame(labels = as.factor(y), row_averages = avg) %>%
+  qplot(labels, row_averages, data = ., geom = "boxplot")  #Intensidade de cada dígito
+```
+
+
+```{r, echo = TRUE}
+k=k
+sds <- colSds(x) #Desvio padrão de cada pixel (cada pixel é uma coluna de x)
+
+
+qplot(sds, bins = "30", color = I("black")) #Distribuição dos pixels (eixo do y é a quantidade de registos e o eixo do x são os desvios padrões existentes)
+
+image(1:k, 1:k, matrix(sds, k, k)[, k:1]) #Variação de cada localização
+
+new_x <- x[ ,colSds(x) > 2/sds] #Fica só com os pixels com desvio padrão maior que 60
+dim(new_x)
+
+
+qplot(as.vector(new_x), bins = 30, color = I("black")) #Histograma dos valores de todos os pixels
+k=0
+dim(new_x) #numero de linhas e colunas de uma matriz
+k = length(matrix(new_x[3,])) #numero de linhas de uma matriz
+k=sqrt(k) #Descobrir qual é o numero de linhas e colunas que devemos utilizar para transformar a linha
+grid <- matrix(new_x[3,], k, k)
+image(1:k, 1:k, grid) #Mostrar a imagem da matriz
+# flip the image back
+image(1:k, 1:k, grid[, k:1])  #Converter a matriz
+k=0
+#new_x[new_x < 50] <- 0 #Pixels com valores a baixo de 50 passam a ser zero
+
+bin_x <- x
+bin_x[bin_x < 255/2] <- 0
+bin_x[bin_x > 255/2] <- 1 #binarizar os dados da matriz
+
+dim(bin_x) #numero de linhas e colunas de uma matriz
+k = length(matrix(bin_x[3,])) #numero de linhas de uma matriz
+k=sqrt(k) #Descobrir qual é o numero de linhas e colunas que devemos utilizar para transformar a linha
+grid <- matrix(bin_x[3,], k, k)
+image(1:k, 1:k, grid) #Mostrar a imagem da matriz
+# flip the image back
+image(1:k, 1:k, grid[, k:1])  #Converter a matriz
+```
